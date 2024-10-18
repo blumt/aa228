@@ -8,6 +8,7 @@ using LinearAlgebra
 using GraphPlot
 using Compose
 using Cairo, Fontconfig
+using TikzGraphs, TikzPictures
 
 """
     write_gph(dag::DiGraph, idx2names, filename)
@@ -103,9 +104,39 @@ function fit(method::K2Search, vars, D)
     return G
 end
 
-function drawgraph(G, id2xnames, outfile)
-    outputfile_pdf = string(outfile[1:end-3],"pdf")
-    draw(PDF(outputfile_pdf, 16cm, 16cm), gplot(G, nodelabel=id2xnames))
+struct LocalDirectedGraphSearch 
+    G # initial graph
+    k_max # number of iterations
+end
+
+function rand_graph_neighbor(G) 
+    n = nv(G)
+    i = rand(1:n)
+    j = mod1(i + rand(2:n)-1, n)
+    G_prime = copy(G)
+    has_edge(G, i, j) ? rem_edge!(G_prime, i, j) : add_edge!(G_prime, i, j)
+    return G_prime
+end
+
+function fit(method::LocalDirectedGraphSearch, vars, D) 
+    G = method.G
+    y = bayesian_score(vars, G, D) 
+    half_k = method.k_max / 2
+    for k in 1:method.k_max
+        G_prime = rand_graph_neighbor(G)
+        y_prime = is_cyclic(G_prime) ? -Inf : bayesian_score(vars, G_prime, D) 
+        if y_prime > y || rand(Float64) < .02*exp(-k)
+            y, G = y_prime, G_prime
+        end
+    end
+    return G
+end
+
+function drawgraph(G, idx2names, outfile)
+    outputfile_pdf = string(outfile[1:end-4])
+    # draw(PDF(outputfile_pdf, 16cm, 16cm), gplot(G, nodelabel=idx2names))
+    t = TikzGraphs.plot(G, idx2names)
+    TikzPictures.save(TikzPictures.PDF(outputfile_pdf), t)
 end
 
 function compute(infile, outfile)
@@ -117,12 +148,21 @@ function compute(infile, outfile)
 
     nvars = length(vars)
     ordering = shuffle(collect(1:nvars))
-    method = K2Search(ordering)
+    varnames = names(Data)
 
-    G = fit(method, vars, D)
-    # println(G)
+    k2_init = K2Search(ordering)
+    G = fit(k2_init, vars, D)
 
-    idx2names = names(Data)
+    score = bayesian_score(vars, G, D)
+    println("Score after k2 search:", score)
+
+    ldgs_init = LocalDirectedGraphSearch(G, 10000)
+    G = fit(ldgs_init, vars, D)
+
+    idx2names = varnames
+
+    score = bayesian_score(vars, G, D)
+    println("Score after graph search:", score)
 
     write_gph(G, idx2names, outfile)
     drawgraph(G, idx2names, outfile)
