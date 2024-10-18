@@ -7,6 +7,7 @@ using SpecialFunctions
 using LinearAlgebra
 using GraphPlot
 using Compose
+using Cairo, Fontconfig
 
 """
     write_gph(dag::DiGraph, idx2names, filename)
@@ -102,14 +103,12 @@ function fit(method::K2Search, vars, D)
     return G
 end
 
+function drawgraph(G, id2xnames, outfile)
+    outputfile_pdf = string(outfile[1:end-3],"pdf")
+    draw(PDF(outputfile_pdf, 16cm, 16cm), gplot(G, nodelabel=id2xnames))
+end
+
 function compute(infile, outfile)
-
-
-    # WRITE YOUR CODE HERE
-    # FEEL FREE TO CHANGE ANYTHING ANYWHERE IN THE CODE
-    # THIS INCLUDES CHANGING THE FUNCTION NAMES, MAKING THE CODE MODULAR, BASICALLY ANYTHING
-
-    #todo: turn infile into vars, G, D, ie compute graph structure
     Data = CSV.read(infile, DataFrame)
     varinfo = describe(Data,:max)
     vars = [Variable(varinfo.variable[i], varinfo.max[i]) for i in 1:length(varinfo.variable)]
@@ -121,10 +120,12 @@ function compute(infile, outfile)
     method = K2Search(ordering)
 
     G = fit(method, vars, D)
-    println(G)
-    #compute graph like above
-    # todo: turn outfile into outfile
+    # println(G)
 
+    idx2names = names(Data)
+
+    write_gph(G, idx2names, outfile)
+    drawgraph(G, idx2names, outfile)
 end
 
 if length(ARGS) != 2
